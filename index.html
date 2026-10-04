@@ -1,1 +1,269 @@
+<!DOCTYPE html>
+<html lang="gu">
+<head>
+  <meta charset="UTF-8">
+  <title>Vernier Caliper Test Mode with Visual Feedback</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background-color: #f4f7f6;
+    }
+    .card {
+      max-width: 650px;
+      margin: auto;
+      background: white;
+      padding: 25px;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    h2 {
+      text-align: center;
+      color: #333;
+    }
+    .svg-container {
+      width: 100%;
+      background-color: #eef2f5;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+    .input-group {
+      margin-bottom: 15px;
+    }
+    label {
+      font-weight: bold;
+      display: block;
+      margin-bottom: 5px;
+    }
+    input[type="number"] {
+      width: 100%;
+      padding: 10px;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 16px;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 5px;
+      font-size: 16px;
+      display: none;
+    }
+    .correct {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .incorrect {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .legend {
+      margin-top: 15px;
+      display: flex;
+      gap: 15px;
+      font-size: 14px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .color-box {
+      width: 15px;
+      height: 15px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <h2>વર્નિયર કેલિપર ટેસ્ટ મોડ</h2>
+
+  <!-- SVG રજૂઆત -->
+  <div class="svg-container">
+    <svg id="caliperSvg" viewBox="0 0 500 120" width="100%" height="180">
+      <!-- મેઈન સ્કેલ બોડી -->
+      <rect x="10" y="20" width="480" height="40" fill="#e0e0e0" stroke="#888" stroke-width="1.5" />
+      
+      <!-- મેઈન સ્કેલના કાપા (રૂપરેખા માટે) -->
+      <g id="mainScaleDivisions"></g>
+      
+      <!-- વર્નિયર સ્કેલ (સ્લાઈડર) -->
+      <g id="vernierGroup" transform="translate(10, 0)">
+        <rect x="0" y="60" width="180" height="45" fill="#d0d7de" stroke="#666" stroke-width="1.5" opacity="0.9" />
+        <!-- વર્નિયર સ્કેલ ઝીરો પોઈન્ટર -->
+        <polygon points="0,60 -5,50 5,50" fill="#007bff" />
+        <g id="vernierScaleDivisions"></g>
+      </g>
+    </svg>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item">
+      <div class="color-box" style="background-color: #007bff;"></div>
+      <span>બ્લુ: મેઈન સ્કેલ ઝીરો / રીડિંગ (MSR)</span>
+    </div>
+    <div class="legend-item">
+      <div class="color-box" style="background-color: #dc3545;"></div>
+      <span>રેડ: સિંક્રોનાઇઝ્ડ કાપો (Matching VSD)</span>
+    </div>
+  </div>
+
+  <br>
+
+  <div class="input-group">
+    <label for="userAnswer">તમારું રીડિંગ દાખલ કરો (mm):</label>
+    <input type="number" id="userAnswer" step="0.02" placeholder="ઉદા. 14.42">
+  </div>
+
+  <button onclick="checkAnswer()">ચેક કરો</button>
+
+  <div id="resultBox" class="result"></div>
+</div>
+
+<script>
+  // સિમ્યુલેશન રેન્ડમ રીડિંગ જનરેટ કરશે (ઉદાહરણ માટે: MSR = 14, VSD = 21 -> Total = 14.42 mm)
+  // LC (Least Count) = 0.02 mm
+  const leastCount = 0.02;
+  let targetMSR = 14;  // mm
+  let targetVSD = 21;  // matching line index (0 થી 50)
+  let actualReading = parseFloat((targetMSR + (targetVSD * leastCount)).toFixed(2));
+
+  // સ્કેલના પિક્સલ રેશિયો
+  const pixelsPerMm = 15; 
+  const startX = 30;
+
+  function initSimulation() {
+    drawMainScale();
+    positionVernierScale();
+  }
+
+  // મેઈન સ્કેલ ડ્રો કરવાની મેથડ
+  function drawMainScale() {
+    const mainScaleGroup = document.getElementById('mainScaleDivisions');
+    mainScaleGroup.innerHTML = '';
+
+    for (let i = 0; i <= 30; i++) {
+      let x = startX + (i * pixelsPerMm);
+      let height = (i % 10 === 0) ? 20 : ((i % 5 === 0) ? 14 : 8);
+      
+      let line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', x);
+      line.setAttribute('y1', 20);
+      line.setAttribute('x2', x);
+      line.setAttribute('y2', 20 + height);
+      line.setAttribute('stroke', '#333');
+      line.setAttribute('stroke-width', '1.5');
+      line.setAttribute('id', `msr-line-${i}`);
+      mainScaleGroup.appendChild(line);
+
+      if (i % 5 === 0) {
+        let text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', x);
+        text.setAttribute('y', 16);
+        text.setAttribute('font-size', '10');
+        text.setAttribute('text-anchor', 'middle');
+        text.textContent = i;
+        mainScaleGroup.appendChild(text);
+      }
+    }
+  }
+
+  // વર્નિયર સ્કેલ ગોઠવવી
+  function positionVernierScale() {
+    const vernierShift = targetMSR * pixelsPerMm + (targetVSD * leastCount * pixelsPerMm);
+    const vernierGroup = document.getElementById('vernierGroup');
+    vernierGroup.setAttribute('transform', `translate(${startX + vernierShift}, 0)`);
+
+    const vernierScaleGroup = document.getElementById('vernierScaleDivisions');
+    vernierScaleGroup.innerHTML = '';
+
+    // વર્નિયરના 50 વિભાગો (0.98mm શિફ્ટ સાથે)
+    for (let j = 0; j <= 50; j++) {
+      let vx = j * (0.98 * pixelsPerMm);
+      let height = (j % 10 === 0) ? 18 : ((j % 5 === 0) ? 13 : 8);
+
+      let line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', vx);
+      line.setAttribute('y1', 60);
+      line.setAttribute('x2', vx);
+      line.setAttribute('y2', 60 + height);
+      line.setAttribute('stroke', '#333');
+      line.setAttribute('stroke-width', '1.2');
+      line.setAttribute('id', `vsd-line-${j}`);
+      vernierScaleGroup.appendChild(line);
+    }
+  }
+
+  // "ચેક કરો" પર ક્લિક થાય ત્યારે વિઝ્યુઅલ હાઇલાઇટ આપવું
+  function checkAnswer() {
+    const userVal = parseFloat(document.getElementById('userAnswer').value);
+    const resultBox = document.getElementById('resultBox');
+
+    if (isNaN(userVal)) {
+      alert("કૃપા કરીને સાચો જવાબ દાખલ કરો.");
+      return;
+    }
+
+    // 1. મેઈન સ્કેલ રીડિંગ (MSR) લાઈન બ્લુ રંગથી હાઈલાઈટ કરવી
+    const msrLine = document.getElementById(`msr-line-${targetMSR}`);
+    if (msrLine) {
+      msrLine.setAttribute('stroke', '#007bff');
+      msrLine.setAttribute('stroke-width', '3');
+    }
+
+    // 2. સિંક્રોનાઇઝ્ડ (મેચ થતો) વર્નિયર કાપો અને તેની સામેનો મેઈન સ્કેલનો કાપો Red રંગથી હાઈલાઈટ કરવો
+    const vsdLine = document.getElementById(`vsd-line-${targetVSD}`);
+    if (vsdLine) {
+      vsdLine.setAttribute('stroke', '#dc3545');
+      vsdLine.setAttribute('stroke-width', '3');
+    }
+
+    const matchedMsrIndex = targetMSR + Math.floor((targetVSD * 49) / 50);
+    const matchedMsrLine = document.getElementById(`msr-line-${matchedMsrIndex}`);
+    if (matchedMsrLine) {
+      matchedMsrLine.setAttribute('stroke', '#dc3545');
+      matchedMsrLine.setAttribute('stroke-width', '3');
+    }
+
+    // પરિણામ દર્શાવવું
+    resultBox.style.display = 'block';
+    if (Math.abs(userVal - actualReading) < 0.001) {
+      resultBox.className = 'result correct';
+      resultBox.innerHTML = `<strong>અભિનંદન! સાચો જવાબ છે.</strong><br>
+        મેઈન સ્કેલ રીડિંગ (MSR): ${targetMSR} mm<br>
+        મેચ થતો વર્નિયર કાપો (VSD): ${targetVSD} (રેડ કલરથી દર્શાવેલ છે)<br>
+        કુલ રીડિંગ: ${actualReading} mm`;
+    } else {
+      resultBox.className = 'result incorrect';
+      resultBox.innerHTML = `<strong>ખોટો જવાબ!</strong><br>
+        તમારો જવાબ: ${userVal} mm<br>
+        સાચો જવાબ: <strong>${actualReading} mm</strong><br>
+        <em>સ્પષ્ટતા:</em> મેઈન સ્કેલનું ઝીરો પોઈન્ટર <strong>${targetMSR} mm</strong> (બ્લુ કાપો) દર્શાવે છે અને વર્નિયરનો <strong>${targetVSD}મો કાપો</strong> (રેડ કાપો) મેઈન સ્કેલ સાથે પરફેક્ટ મેચ થાય છે.`;
+    }
+  }
+
+  window.onload = initSimulation;
+</script>
+
+</body>
+</html>
 
